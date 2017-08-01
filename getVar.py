@@ -398,415 +398,271 @@ def reverse_compliment(seq):
     complement = {'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A', 'a': 't', 'c': 'g', 'g': 'c', 't': 'a'}
     return "".join(complement.get(base, base) for base in reversed(seq))
 
-def read_nucdiff(in_path, query_genbank, ref_genbank, out_file, ref=False, merge=False, get_indel=False):
+
+def get_genes(gbk):
+    with open(gbk) as gbk:
+        gene_dict = {}
+        seqDict = {}
+        getseq2 = False
+        getseq = False
+        getproduct = False
+        for line in gbk:
+            if line.startswith('LOCUS'):
+                contig_name = line.split()[1]
+                gene_dict[contig_name] = []
+                genes = gene_dict[contig_name]
+            elif line.startswith('     CDS             complement('):
+                startstop = line.split('(')[1].split(')')[0]
+                start, stop = map(int, startstop.split('..'))
+                strand = '-'
+                gene = 'none'
+                uniprot = 'none'
+            elif line.startswith('     CDS '):
+                startstop = line.split()[1]
+                strand = '+'
+                start, stop = map(int, startstop.split('..'))
+                gene = 'none'
+            elif line.startswith('                     /locus_tag'):
+                locus_tag = line.split('"')[1]
+            elif line.startswith('                     /gene='):
+                gene = line.split('"')[1]
+            elif line.startswith('                     /inference="similar to AA sequence:UniProtKB:'):
+                uniprot = line.split(':')[-1].split('"')[0]
+            elif line.startswith('                     /product=') or getproduct:
+                if line.startswith('                     /product='):
+                    getproduct = True
+                    product = line.rstrip().split('=')[1]
+                else:
+                    product += ' ' + line.rstrip()[21:]
+                if product.endswith('"'):
+                    getproduct = False
+            elif line.startswith('                     /translation='):
+                seq = line.rstrip().split('"')[1]
+                if line.count('"') == 2:
+                    genes.append((start, stop, strand, gene, locus_tag, seq, product, uniprot))
+                else:
+                    getseq = True
+            elif getseq:
+                seq += line.split()[0]
+                if seq.endswith('"'):
+                    genes.append((start, stop, strand, gene, locus_tag, seq[:-1], product, uniprot))
+                    getseq = False
+            elif line.startswith('ORIGIN'):
+                getseq2 = True
+                seq = ''
+            elif line.startswith('//'):
+                seqDict[contig_name] = seq
+                getseq2 = False
+            elif getseq2:
+                seq += ''.join(line.split()[1:])
+    return gene_dict, seqDict
+
+def read_nucdiff(gffs, query_genbank, ref_genbank, output, working_dir, ref=False, merge=False, get_indel=False, promoter_region=500):
     if ref:
         next = '_ref_'
     else:
         next = '_query_'
-    width = 50000
-    x_margin = 2500
-    y_margin = 2500
-    y_gap = 1000
-    line_height = 500
-    line_space = 2500
-    feature_height = 800
-    feature_line_width = 100
-    line_width = 20
-    snv_line_width = 100
-    genome_color = (100, 100, 100)
-    genome_alpha = 0.5
-    feature_alpha = 1
-    label_gene = False
-    text_size = 600
-    if merge:
-        height = y_margin * 2 + feature_height
-    else:
-        height = y_margin * 2 + feature_height * 4 + y_gap * 4
-    svg = scalableVectorGraphics(height, width)
-    color_list = [(240, 163, 255), (0, 117, 220), (153, 63, 0), (76, 0, 92), (25, 25, 25), (0, 92, 49), (43, 206, 72),
-                  (255, 204, 153),
-                  (128, 128, 128), (148, 255, 181), (143, 124, 0), (157, 204, 0), (194, 0, 136), (0, 51, 128),
-                  (255, 164, 5), (255, 168, 187),
-                  (66, 102, 0), (255, 0, 16), (94, 241, 242), (0, 153, 143), (224, 255, 102), (116, 10, 255),
-                  (153, 0, 0), (255, 255, 128),
-                  (255, 255, 0), (255, 80, 5), (0, 0, 0), (50, 50, 50)]
-
-    colourDict = {
-        'stop_gain': (240, 163, 255),
-        'stop_loss': (0, 117, 220),
-        'synonymous': (153, 63, 0),
-        'nonsynonymous': (76, 0, 92),
-        'intergenic': (255, 168, 187),
-        'intergenic_insertion':(0, 92, 49),
-        'intergenic_deletion':(43, 206, 72),
-        'inframe_insertion':(255, 204, 153),
-        'inframe_deletion':(194, 0, 136),
-        'insertion': (148, 255, 181),
-        'deletion': (143, 124, 0),
-        'duplication': (157, 204, 0),
-        'collapsed_repeat':(66, 102, 0),
-        'substitution':(0, 51, 128),
-        'inversion':(255, 164, 5),
-        'collapsed_tandem_repeat':(255, 0, 16),
-        'tandem_duplication':(94, 241, 242),
-        'gap':(0, 153, 143),
-        'translocation-overlap':(224, 255, 102),
-        'relocation-overlap':(116, 10, 255),
-        'relocation':(153, 0, 0)
-    }
-    query_names = set()
-    with open(query_genbank) as gbk:
-        gene_dict = {}
-        getseq2 = False
-        getseq = False
-        seqDict = {}
-        for line in gbk:
-            if line.startswith('LOCUS'):
-                contig_name = line.split()[1]
-                query_names.add(contig_name)
-                gene_dict[contig_name] = []
-                genes = gene_dict[contig_name]
-            elif line.startswith('     CDS             complement('):
-                startstop = line.split('(')[1].split(')')[0]
-                start, stop = map(int, startstop.split('..'))
-                strand = '-'
-                gene = 'none'
-            elif line.startswith('     CDS '):
-                startstop = line.split()[1]
-                strand = '+'
-                start, stop = map(int, startstop.split('..'))
-                gene = 'none'
-            elif line.startswith('                     /locus_tag'):
-                locus_tag = line.split('"')[1]
-            elif line.startswith('                     /gene='):
-                gene = line.split('"')[1]
-            elif line.startswith('                     /product='):
-                product = line.split('"')[1]
-            elif line.startswith('                     /translation='):
-                seq = line.rstrip().split('"')[1]
-                if line.count('"') == 2:
-                    genes.append((start, stop, strand, gene, locus_tag, seq, product))
-                else:
-                    getseq = True
-            elif getseq:
-                seq += line.split()[0]
-                if seq.endswith('"'):
-                    genes.append((start, stop, strand, gene, locus_tag, seq[:-1], product))
-                    getseq = False
-            elif line.startswith('ORIGIN'):
-                getseq2 = True
-                seq = ''
-            elif line.startswith('//'):
-                seqDict[contig_name] = seq
-                getseq2 = False
-            elif getseq2:
-                seq += ''.join(line.split()[1:])
-    with open(ref_genbank) as gbk:
-        getseq2 = False
-        getseq = False
-        for line in gbk:
-            if line.startswith('LOCUS'):
-                contig_name = line.split()[1]
-                gene_dict[contig_name] = []
-                genes = gene_dict[contig_name]
-            elif line.startswith('     CDS             complement('):
-                startstop = line.split('(')[1].split(')')[0]
-                start, stop = map(int, startstop.split('..'))
-                strand = '-'
-                gene = 'none'
-            elif line.startswith('     CDS '):
-                startstop = line.split()[1]
-                strand = '+'
-                start, stop = map(int, startstop.split('..'))
-                gene = 'none'
-            elif line.startswith('                     /locus_tag'):
-                locus_tag = line.split('"')[1]
-            elif line.startswith('                     /gene='):
-                gene = line.split('"')[1]
-            elif line.startswith('                     /product='):
-                product = line.split('"')[1]
-            elif line.startswith('                     /translation='):
-                seq = line.rstrip().split('"')[1]
-                if line.count('"') == 2:
-                    genes.append((start, stop, strand, gene, locus_tag, seq, product))
-                else:
-                    getseq = True
-            elif getseq:
-                seq += line.split()[0]
-                if seq.endswith('"'):
-                    genes.append((start, stop, strand, gene, locus_tag, seq[:-1], product))
-                    getseq = False
-            elif line.startswith('ORIGIN'):
-                getseq2 = True
-                seq = ''
-            elif line.startswith('//'):
-                seqDict[contig_name] = seq
-                getseq2 = False
-            elif getseq2:
-                seq += ''.join(line.split()[1:])
-    fig_width = width - x_margin * 2
-    max_width = 3500000
-    len_list = []
-    for i in seqDict:
-        len_list.append((len(seqDict[i]), i))
-    len_list.sort(reverse=True)
-    contig_gap = 800
-    contig_offset = {}
-    curr_x = x_margin
-    for i in len_list:
-        contig_offset[i[1]] = curr_x
-        svg.drawLine(curr_x, y_margin + feature_height/2, curr_x + i[0] * 1.0 / max_width * (fig_width - (len(len_list) - 1) * contig_gap), y_margin + feature_height/2, line_height, genome_color, genome_alpha)
-        curr_x += i[0] * 1.0 / max_width * (fig_width - (len(len_list) - 1) * contig_gap) + contig_gap
-    snv_name_set, struct_name_set = set(), set()
-    new_gff = open(out_file + '.gff', 'w')
-    with open(in_path + next + 'snps.gff') as snps:
-        for line in snps:
-            if not line.startswith('#'):
-                contig, program, so, query_start, query_stop, score, strand, phase, extra = line.rstrip().split('\t')
-                if not contig in query_names:
-                    print contig, query_names
-                    sys.exit('You may have switched query and reference genbanks.')
-                query_start = int(query_start)
-                query_stop = int(query_stop)
-                the_id, name, length, query_dir, ref_contig, ref_coord, query_bases, ref_bases, color = extra.split(';')
-                name = name.split('=')[1]
-                length = int(length.split('=')[1])
-                ref_bases = ref_bases.split('=')[1]
-                query_bases = query_bases.split('=')[1]
-                if query_bases == '-':
-                    query_bases = ''
-                if ref_bases == '-':
-                    ref_bases = ''
-                gene_name = 'none'
-                locus_tag = 'none'
-                mut_type = 'intergenic'
-                for i in gene_dict[contig]:
-                    start, stop, strand, gene, locus, seq, product = i
-                    if start <= query_start <= stop or start <= query_stop <= stop:
-                        gene_seq = seqDict[contig][start-1:stop]
-                        gene_seq_altered = seqDict[contig][start-1:query_start-1] + ref_bases + seqDict[contig][query_stop:stop]
-                        gene_name = gene
-                        locus_tag = locus
-                        if strand == '-':
-                            gene_seq = reverse_compliment(gene_seq)
-                            gene_seq_altered = reverse_compliment(gene_seq_altered)
-                        aa_seq = translate_dna(gene_seq)
-                        aa_seq_altered = translate_dna(gene_seq_altered)
-                        if not '*' in aa_seq_altered:
-                            mut_type = 'stop_gain'
-                        elif '*' in aa_seq_altered[:-1]:
-                            mut_type = 'stop_loss'
-                        elif aa_seq == aa_seq_altered:
-                            mut_type = 'synonymous'
+    query_genes, query_seq = get_genes(query_genbank)
+    ref_genes, ref_seq = get_genes(ref_genbank)
+    with open(output + '.gff', 'w') as o:
+        o.write('# QUERY_GBK=' + query_genbank + '\n')
+        o.write('# REF_GBK=' + ref_genbank + '\n')
+        for gff in gffs:
+            with open(gff + next + 'snps.gff') as snps:
+                for line in snps:
+                    if line.startswith('#'):
+                        o.write(line)
+                    if not line.startswith('#'):
+                        contig, program, so, query_start, query_stop, score, strand, phase, extra = line.rstrip().split('\t')
+                        if not contig in query_genes:
+                            sys.exit('You may have switched query and reference genbanks.')
+                        query_start = int(query_start)
+                        query_stop = int(query_stop)
+                        extra_dict = {}
+                        for i in extra.split(';'):
+                            key, value = i.split('=')
+                            extra_dict[key] = value
+                        if extra_dict['Name'] in ['deletion', 'insertion'] and not get_indel:
+                            continue
+                        for i in query_genes[contig]:
+                            start, stop, strand, gene, locus, seq, product, uniprot = i
+                            if start <= query_start <= stop or start <= query_stop <= stop:
+                                gene_seq = query_seq[contig][start-1:stop]
+                                gene_seq_altered = query_seq[contig][start-1:query_start-1] + extra_dict['ref_bases'] + query_seq[contig][query_stop:stop]
+                                if strand == '-':
+                                    gene_seq = reverse_compliment(gene_seq)
+                                    gene_seq_altered = reverse_compliment(gene_seq_altered)
+                                aa_seq = translate_dna(gene_seq)
+                                aa_seq_altered = translate_dna(gene_seq_altered)
+                                if not '*' in aa_seq_altered:
+                                    extra_dict['Name'] = 'stop_gain'
+                                elif '*' in aa_seq_altered[:-1]:
+                                    extra_dict['Name'] = 'stop_loss'
+                                elif aa_seq == aa_seq_altered:
+                                    extra_dict['Name'] = 'synonymous'
+                                else:
+                                    extra_dict['Name'] = 'nonsynonymous'
+                                extra_dict['in_genes'] = locus
+                                extra_dict['in_genes_name'] = gene
+                                extra_dict['in_gene_uniprot'] = uniprot
+                                break
+                            elif start - promoter_region <= query_start < start and strand == '+':
+                                extra_dict['Name'] = 'promoter'
+                                extra_dict['in_genes'] = locus
+                                extra_dict['in_genes_name'] = gene
+                                extra_dict['in_gene_uniprot'] = uniprot
+                            elif stop + promoter_region >= query_start > stop and strand == '-':
+                                extra_dict['Name'] = 'promoter'
+                                extra_dict['in_genes'] = locus
+                                extra_dict['in_genes_name'] = gene
+                                extra_dict['in_gene_uniprot'] = uniprot
+                        new_extra = []
+                        for i in extra_dict:
+                            new_extra.append(i + '=' + extra_dict[i])
+                        print new_extra
+                        new_extra.sort()
+                        o.write('\t'.join([contig, program, so, str(query_start), str(query_stop), score, strand, phase, ';'.join(new_extra)]) + '\n')
+        for gff in gffs:
+            with open(gff + next + 'struct.gff') as struct:
+                for line in struct:
+                    if not line.startswith('#'):
+                        contig, program, so, query_start, query_stop, score, strand, phase, extra = line.rstrip().split('\t')
+                        if not contig in query_genes:
+                            sys.exit('You may have switched query and reference genbanks.')
+                        query_start = int(query_start)
+                        query_stop = int(query_stop)
+                        extra_dict = {}
+                        for i in extra.split(';'):
+                            key, value = i.split('=')
+                            extra_dict[key] = value
+                        for i in query_genes[contig]:
+                            start, stop, strand, gene, locus, seq, product, uniprot = i
+                            if start <= query_start <= query_stop <= stop:
+                                if 'in_gene' in extra_dict:
+                                    extra_dict['in_genes'] += ',' + locus
+                                    extra_dict['in_genes_name'] += ',' + gene
+                                    extra_dict['in_gene_uniprot'] = uniprot
+                                else:
+                                    extra_dict['in_genes'] = locus
+                                    extra_dict['in_genes_name'] = gene
+                                    extra_dict['in_gene_uniprot'] = uniprot
+                            elif query_start <= start <= stop <= query_stop:
+                                if query_stop - query_start < 100000:
+                                    if 'contains_gene' in extra_dict:
+                                        extra_dict['contains_genes'] += ',' + locus
+                                        extra_dict['contains_genes_name'] += ',' + gene
+                                        extra_dict['contains_gene_uniprot'] += ',' + uniprot
+                                    else:
+                                        extra_dict['contains_genes'] = locus
+                                        extra_dict['contains_genes_name'] = gene
+                                        extra_dict['contains_genes_uniprot'] = uniprot
+                                # else:
+                                    # print line.rstrip()
+                            elif start <= query_start <= stop or start <= query_stop <= stop:
+                                if 'partial_overlap' in extra_dict:
+                                    extra_dict['partial_overlap'] += ',' + locus
+                                    extra_dict['partial_overlap_name'] += ',' + gene
+                                    extra_dict['partial_overlap_uniprot'] += ',' + uniprot
+                                else:
+                                    extra_dict['partial_overlap'] = locus
+                                    extra_dict['partial_overlap_name'] = gene
+                                    extra_dict['partial_overlap_uniprot'] = uniprot
+                        ref_contig = extra_dict['ref_sequence']
+                        if 'ref_coord' in extra_dict:
+                            ref_coord = extra_dict['ref_coord']
+                            if '-' in ref_coord:
+                                ref_start, ref_stop = map(int, ref_coord.split('-'))
+                            else:
+                                ref_start = ref_stop = int(ref_coord)
+                        elif 'blk_1_ref':
+                            ref_coord = extra_dict['blk_1_ref']
+                            ref_start, ref_stop = map(int, ref_coord.split('-'))
                         else:
-                            mut_type = 'nonsynonymous'
-                        break
-                if name == 'substitution':
-                    name = mut_type
-                elif name == 'insertion':
-                    if mut_type == 'intergenic':
-                        name = 'intergenic_insertion'
-                    elif (len(ref_bases) - len(query_bases)) % 3 == 0:
-                        name = 'inframe_insertion'
-                elif name == 'deletion':
-                    if mut_type == 'intergenic':
-                        name = 'intergenic_deletion'
-                    elif (len(ref_bases) - len(query_bases)) % 3 == 0:
-                        name = 'inframe_deletion'
-                # len(seqDict[contig])
-                if (not 'insertion' in name and not 'deletion' in name) or get_indel:
-                    # sys.stdout.write(name + '\t' + gene + '\t' + locus + '\t' + product + '\n')
-                    new_gff.write(line.rstrip() + ';mut_type=' + name + ';gene=' + gene_name + ',' + locus_tag + '\n')
-                    x = int(query_start * 1.0 / max_width * fig_width) + contig_offset[contig]
-                    svg.drawLine(x, y_margin, x, y_margin + feature_height, snv_line_width, colourDict[name])
-                    snv_name_set.add(name)
-                    if label_gene:
-                        svg.writeString(gene, x + text_size/4, y_margin, text_size, rotate=1)
-    with open(in_path + next + 'struct.gff') as struct:
-        # y_margin += line_space
-        shuffle_list = []
-        to_draw = []
-        for line in struct:
-            if not line.startswith('#'):
-                contig, program, so, query_start, query_stop, score, strand, phase, extra = line.rstrip().split('\t')
-                query_start = int(query_start)
-                query_stop = int(query_stop)
-                name = extra.split(';')[1].split('=')[1]
-                x = int(query_start * 1.0 / max_width * fig_width) + contig_offset[contig]
-                ref_name = None
-                ref_start = None
-                ref_stop = None
-                the_id = None
-                name = None
-                print 'dong'
-                for i in extra.split(';'):
-                    if i.startswith('ref_sequence=') or i.startswith('ref_sequence_1='):
-                        ref_name = i.split('=')[1]
-                        print 'ding'
-                    elif i.startswith('ref_coord='):
-                        if '-' in i.split('=')[1]:
-                            ref_start, ref_stop = i.split('=')[1].split('-')
-                        else:
-                            ref_start = i.split('=')[1]
-                            ref_stop = i.split('=')[1]
-                        ref_start = int(ref_start)
-                        ref_stop = int(ref_stop)
-                    elif i.startswith('ID='):
-                        the_id = i.split('=')[1]
-                    elif i.startswith('ins_len='):
-                        ins_length = i.split('=')[1]
-                    elif i.startswith('Name'):
-                        name = i.split('=')[1]
-                    else:
-                        print i
-                struct_name_set.add(name)
-                new_gff.write(line.rstrip())
-                for i in gene_dict[contig]:
-                    start, stop, strand, gene, locus, seq, product = i
-                    if start <= query_start <= query_stop <= stop:
-                        new_gff.write(';in_gene=' + gene + ',' + locus)
-                    elif query_start <= start <= stop <= query_stop:
-                        if not name in ['inversion'] or query_stop - query_start < 20000:
-                            new_gff.write(';contains_gene=' + gene + ',' + locus)
-                    elif start <= query_start <= stop or start <= query_stop <= stop:
-                        new_gff.write(';partial_overlap=' + gene + ',' + locus)
-                for i in gene_dict[ref_name]:
-                    start, stop, strand, gene, locus, seq, product = i
-                    if start <= ref_start <= ref_stop <= stop:
-                        new_gff.write(';ref_in_gene=' + gene + ',' + locus)
-                    elif ref_start <= start <= stop <= ref_stop:
-                        if not name in ['inversion'] or query_stop - query_start < 20000:
-                             new_gff.write(';ref_contains_gene=' + gene + ',' + locus)
-                    elif start <= ref_start <= stop or start <= ref_stop <= stop:
-                        new_gff.write(';ref_partial_overlap=' + gene + ',' + locus)
-                    new_gff.write('\n')
-                if name.startswith('reshuffling'):
-                    the_id, the_name, length, query_dir, ref_contig, ref_coord, color = extra.split(';')
-                    shuffle_num = int(the_name.split('_')[1])
-                    shuffle_list.append((shuffle_num, query_start, query_stop))
-                elif name == 'translocation-overlap' or name == 'relocation-overlap' or name == 'relocation':
-                    # print extra.split(';')
-                    # the_id, the_name, length, ref_contig, query_coord_1, ref_coord_1, query_len_1, ref_len_1, query_start_1,\
-                    # ref_start_1, query_end_1, ref_end_1,  query_coord_2, ref_coord_2, query_len_2, ref_len_2,\
-                    # query_start_2, ref_start_2, query_end_2, ref_end_2, color = extra.split(';')
-                    width = int((query_stop - query_start) * 1.0 / max_width * fig_width)
-                    if width <= feature_line_width:
-                        feature_alpha1 = 0
-                    else:
-                        feature_alpha1 = feature_alpha
-                    to_draw.append((x, y_margin, width, feature_height, colourDict[name], colourDict[name], feature_line_width, feature_alpha, feature_alpha1))
-                elif name in ['insertion', 'substitution', 'inversion']:
-                    the_id, the_name, length, query_dir, ref_contig, ref_coord, color = extra.split(';')
-                    width = int((query_stop - query_start) * 1.0 / max_width * fig_width)
-                    if width == 0: width = 1
-                    if width <= feature_line_width:
-                        feature_alpha1 = 0
-                    else:
-                        feature_alpha1 = feature_alpha
-                    to_draw.append((x, y_margin, width, feature_height, colourDict[name], colourDict[name], feature_line_width, feature_alpha, feature_alpha1))
-                elif name == 'deletion':
-                    the_id, the_name, length, query_dir, ref_contig, ref_coord, color = extra.split(';')
-                    width = int(length.split('=')[1])
-                    width = int(width * 1.0 / max_width * fig_width)
-                    if width == 0: width = 1
-                    if width <= feature_line_width:
-                        feature_alpha1 = 0
-                    else:
-                        feature_alpha1 = feature_alpha
-                    svg.drawLine(x+width*1.0/2, y_margin - feature_height * 1.5 + feature_height, x+width*1.0/2, y_margin + feature_height, line_width, (0, 0, 0), feature_alpha, 'butt')
-                    to_draw.append((x, y_margin - feature_height * 1.5, width, feature_height, colourDict[name], colourDict[name], feature_line_width, feature_alpha, feature_alpha1))
-                elif name == 'duplication':
-                    if len(extra.split(';')) == 8:
-                        the_id, the_name, length, query_dir, ref_contig, ref_coord, repeat_coord, color = extra.split(';')
-                    else:
-                        the_id, the_name, length, query_dir, ref_contig, ref_coord, color = extra.split(';')
-                    width = int((query_stop - query_start) * 1.0 / max_width * fig_width)
-                    #
-                    # rep_x = int(repeat_coord.split('=')[1].split('-')[0])
-                    # rep_x = int(rep_x * 1.0 / max_width * fig_width) + contig_offset[contig]
-                    if width == 0: width = 1
-                    if width <= feature_line_width:
-                        feature_alpha1 = 0
-                    else:
-                        feature_alpha1 = feature_alpha
-                    to_draw.append((x, y_margin, width, feature_height, colourDict[name], colourDict[name], feature_line_width, feature_alpha, feature_alpha1))
-                    # to_draw.append((rep_x, y_margin, width, feature_height, colourDict[name], colourDict[name], feature_line_width, feature_alpha, feature_alpha1))
+                            print line.rstrip()
+                        for i in ref_genes[ref_contig]:
+                            start, stop, strand, gene, locus, seq, product, uniprot = i
+                            if start <= ref_start <= ref_stop <= stop:
+                                if 'in_gene_ref' in extra_dict:
+                                    extra_dict['in_genes_ref'] += ',' + locus
+                                    extra_dict['in_genes_ref_name'] += ',' + gene
+                                    extra_dict['in_genes_ref_uniprot'] += ',' + uniprot
+                                else:
+                                    extra_dict['in_genes_ref'] = locus
+                                    extra_dict['in_genes_ref_name'] = gene
+                                    extra_dict['in_genes_ref_uniprot'] = uniprot
+                            elif ref_start <= start <= stop <= ref_stop:
+                                if ref_stop - ref_start < 100000:
+                                    if 'contains_gene_ref' in extra_dict:
+                                        extra_dict['contains_genes_ref'] += ',' + locus
+                                        extra_dict['contains_genes_ref_name'] += ',' + gene
+                                        extra_dict['contains_genes_ref_uniprot'] += ',' + uniprot
+                                    else:
+                                        extra_dict['contains_genes_ref'] = locus
+                                        extra_dict['contains_genes_ref_name'] = gene
+                                        extra_dict['contains_genes_ref_uniprot'] = uniprot
 
-                    # svg.drawPath([x + width/2, (x+rep_x)/2, rep_x+width/2], [y_margin, y_margin -feature_height/2, y_margin], line_width, (0, 0, 0), feature_alpha)
-                elif name == 'collapsed_repeat':
-                    if len(extra.split(';')) == 8:
-                        the_id, the_name, length, query_dir, ref_contig, ref_coord, repeat_coord, color = extra.split(';')
-                    else:
-                        the_id, the_name, length, query_dir, ref_contig, ref_coord, color = extra.split(';')
-                        repeat_coord = 'none'
+                                # else:
+                                    # print line.rstrip()
+                            elif start <= ref_start <= stop or start <= ref_stop <= stop:
+                                if 'partial_overlap_ref' in extra_dict:
+                                    extra_dict['partial_overlap_ref'] += ',' + locus
+                                    extra_dict['partial_overlap_ref_name'] += ',' + gene
+                                    extra_dict['partial_overlap_ref_uniprot'] += ',' + uniprot
+                                else:
+                                    extra_dict['partial_overlap_ref'] = locus
+                                    extra_dict['partial_overlap_ref_name'] = gene
+                                    extra_dict['partial_overlap_ref_uniprot'] = uniprot
+                        new_extra = []
+                        for i in extra_dict:
+                            new_extra.append(i + '=' + extra_dict[i])
+                        new_extra.sort()
+                        o.write('\t'.join([contig, program, so, str(query_start), str(query_stop), score, strand, phase, ';'.join(new_extra)]) + '\n')
+        for i in query_genes:
+            plasmid = None
+            for j in gffs:
+                if os.path.basename(j).startswith(os.path.splitext(os.path.basename(query_genbank))[0] + '.' + i +  'vs'):
+                    plasmid = i
+            if plasmid is None:
+                locus_list = []
+                gene_list = []
+                uniprot_list = []
+                for j in query_genes[i]:
+                    start, stop, strand, gene, locus, seq, product, uniprot = j
+                    locus_list.append(locus)
+                    gene_list.append(gene)
+                    uniprot_list.append(uniprot)
+                extra = 'Name=Plasmid_loss;contains_gene=' + ','.join(locus_list) + ';contains_gene_name=' +\
+                ','.join(gene_list) + ';contains_gene_uniprot=' + ','.join(uniprot_list)
+                o.write('\t'.join([i, 'getVar', 'SO:0001059', '1', str(len(query_seq[i])), '.', '.', '.', extra]) + '\n')
+        for i in ref_genes:
+            plasmid = None
+            for j in gffs:
+                if os.path.basename(j).endswith('vs' + os.path.splitext(os.path.basename(ref_genbank))[0] + '.' + i):
+                    plasmid = i
+
+            if plasmid is None:
+                locus_list = []
+                for j in ref_genes[i]:
+                    start, stop, strand, gene, locus, seq, product, uniprot = j
+                    locus_list.append(locus)
+                    gene_list.append(gene)
+                    uniprot_list.append(uniprot)
+                extra = 'Name=Plasmid_loss;ref_sequence=' + i + ';contains_gene_ref=' + ','.join(locus_list) + ';contains_gene_ref_name=' +\
+                ','.join(gene_list) + ';contains_gene_ref_uniprot=' + ','.join(uniprot_list)
+                o.write('\t'.join([i, 'getVar', 'SO:0001059', '1', str(len(ref_seq[i])), '.', '.', '.', extra]) + '\n')
 
 
-                    width = int((query_stop - query_start) * 1.0 / max_width * fig_width)
-                    # rep_x = int(repeat_coord.split('=')[1].split('-')[0])
-                    # rep_x = int(rep_x * 1.0 / max_width * fig_width) + contig_offset[contig]
-                    if width == 0: width = 1
-                    if width <= feature_line_width:
-                        feature_alpha1 = 0
-                    else:
-                        feature_alpha1 = feature_alpha
-                    to_draw.append((x, y_margin, width, feature_height, colourDict[name], colourDict[name],
-                                    feature_line_width, feature_alpha, feature_alpha1))
-                elif name == 'tandem_duplication' or name == 'collapsed_tandem_repeat':
-                    # the_id, the_name, length, query_dir, ref_contig, ref_coord, repeat_coord, repeat_coord2, color = extra.split(';')
-                    width = int((query_stop - query_start) * 1.0 / max_width * fig_width)
-                    if width == 0: width = 1
-                    if width <= feature_line_width:
-                        feature_alpha1 = 0
-                    else:
-                        feature_alpha1 = feature_alpha
-                    to_draw.append((x, y_margin, width, feature_height, colourDict[name], colourDict[name],
-                                    feature_line_width, feature_alpha, feature_alpha1))
-                elif name == 'unaligned_end' or name == 'unaligned_beginning':
-                    sys.stderr.write('Warning, contigs have unaligned ends - ensure they are orientated correctly\n')
-                else:
-                    sys.stderr.write(name + ' could not be interperated by this script\n')
-                    # sys.exit()
-        to_draw.sort(key=lambda x:x[2])
-        for i in to_draw:
-            a, b, c, d, e, f, g, h, i = i
-            svg.drawOutRect(a, b, c, d, e, f, g, h, i)
-        shuffle_list.sort(key=lambda x:x[1] -x[2])
-        y_margin += y_gap
-        for i in shuffle_list:
-            pos, start, stop = i
-            h = int(pos * 1.0 / len(shuffle_list) * 360)
-            x1 = int(start * 1.0 / max_width * fig_width) + x_margin
-            x2 = int(stop * 1.0 / max_width * fig_width) + x_margin
-            if x2 == x1:
-                x2 += 1
-            x_margin, y_margin + feature_height / 2, fig_width, y_margin + feature_height / 2, line_height, genome_color, genome_alpha
-            color = hsl_to_rgb(h, 0.5, 0.5)
-            # svg.drawLine(x1, y_margin + feature_height / 2, x2, y_margin + feature_height / 2, line_height, color, genome_alpha, 'butt')
-    curr_y = y_margin + y_gap
-    for i in snv_name_set:
-        svg.drawLine(x_margin, curr_y, x_margin, curr_y + feature_height, snv_line_width, colourDict[i])
-        svg.writeString(i.replace('_', ' '), x_margin + feature_height*3/4, curr_y + feature_height * 3 / 4, text_size)
-        curr_y += feature_height + 200
-    # for i in struct_name_set:
-    #     svg.drawOutRect(x_margin, curr_y, feature_height/2, feature_height, colourDict[i], colourDict[i], feature_line_width, feature_alpha, feature_alpha)
-    #     svg.writeString(i.replace('_', ' '), x_margin + feature_height*3/4, curr_y + feature_height * 3 / 4, text_size)
-    #     curr_y += feature_height + 200
-
-
-
-
-    # with open(in_path + next + 'snps.gff'):
-    # with open(in_path + next + 'snps.gff'):
-    svg.writesvg(out_file + '.svg')
 
 
 def gbk_to_fasta(gbk, out, concat=True):
+    length_dict = {}
     getseq = False
     if concat:
         with open(gbk) as f, open(out, 'w') as o:
             for line in f:
                 if line.startswith('LOCUS'):
                     name = line.split()[1]
+                    length_dict[name] = int(line.split()[2])
                     o.write('>' + name + '\n')
                 elif line.startswith('ORIGIN'):
                     getseq = True
@@ -819,6 +675,7 @@ def gbk_to_fasta(gbk, out, concat=True):
             for line in f:
                 if line.startswith('LOCUS'):
                     name = line.split()[1]
+                    length_dict[name] = int(line.split()[2])
                     o = open(out + '.' + name + '.fa', 'w')
                     o.write('>' + name + '\n')
                 elif line.startswith('ORIGIN'):
@@ -828,36 +685,65 @@ def gbk_to_fasta(gbk, out, concat=True):
                     o.close()
                 elif getseq:
                     o.write(''.join(line.split()[1:]) + '\n')
+    return length_dict
 
 
 def get_contig_matches(query_gbk, ref_gbk, working_dir):
-    gbk_to_fasta(query_gbk, working_dir + '/query_all.fa')
-    gbk_to_fasta(ref_gbk, working_dir + '/ref_all.fa')
+    query_lengths = gbk_to_fasta(query_gbk, working_dir + '/query_all.fa')
+    ref_lengths = gbk_to_fasta(ref_gbk, working_dir + '/ref_all.fa')
     subprocess.Popen('nucmer ' + working_dir + '/query_all.fa ' + working_dir + '/ref_all.fa --prefix ' + working_dir + '/all_v_all', shell=True).wait()
-    subprocess.Popen('show-coords ' + working_dir + '/all_v_all.delta > ' + working_dir + '/all_v_all.coords', shell=True).wait()
+    subprocess.Popen('delta-filter -g ' + working_dir + '/all_v_all.delta > ' +
+                      working_dir + '/all_v_all.filter.delta', shell=True, stderr=subprocess.PIPE).wait()
+    subprocess.Popen('show-coords ' + working_dir + '/all_v_all.filter.delta > ' + working_dir + '/all_v_all.coords', shell=True).wait()
     get_aligns = False
-    best_match_query = {}
-    best_match_ref = {}
+    matched_bases = {}
     with open(working_dir + '/all_v_all.coords') as f:
         for line in f:
             if line.startswith('=================='):
                 get_aligns = True
             elif get_aligns:
                 s1, e1, bar, s2, e2, bar, l1, l2, bar, idy, bar, query, ref = line.split()
-                if not query in best_match_query or int(l1) > best_match_query[query][0]:
-                    best_match_query[query] = (int(l1), ref)
-                if not ref in best_match_ref or int(l1) > best_match_ref[ref][0]:
-                    best_match_ref[ref] = (int(l1), query)
-    print best_match_query
-    print best_match_ref
-    pairs = []
+                s1, e1 = int(s1), int(e1)
+                if query in matched_bases:
+                    if not ref in matched_bases[query]:
+                        matched_bases[query][ref] = set()
+                else:
+                    matched_bases[query] = {ref:set()}
+                for i in range(s1, e1+1):
+                    matched_bases[query][ref].add(i)
+    query_matches = {}
+    ref_matches = {}
+    for i in matched_bases:
+        for j in matched_bases[i]:
+            if i in query_matches and len(matched_bases[i][j]) > query_matches[i][1]:
+                query_matches[i] = (j, len(matched_bases[i][j]))
+            elif not i in query_matches and len(matched_bases[i][j]) > query_lengths[i] /2:
+                query_matches[i] = (j, len(matched_bases[i][j]))
+            if j in ref_matches and len(matched_bases[i][j]) > ref_matches[j][1]:
+                ref_matches[j] = (i, len(matched_bases[i][j]))
+            elif not j in ref_matches and len(matched_bases[i][j]) > ref_lengths[j] /2:
+                ref_matches[j] = (i, len(matched_bases[i][j]))
+    matches = []
+    for i in query_matches:
+        match = query_matches[i][0]
+        if match in ref_matches and ref_matches[match][0] == i:
+            matches.append((i, match))
+            print i, match, list(query_lengths), list(ref_lengths)
+    return matches
+
+
+def run_nucdiff(matches, working_dir, query_gbk, ref_gbk):
     gbk_to_fasta(query_gbk, working_dir + '/' + os.path.splitext(os.path.basename(query_gbk))[0], False)
     gbk_to_fasta(ref_gbk, working_dir + '/' + os.path.splitext(os.path.basename(ref_gbk))[0], False)
-    for i in best_match_query:
-        if best_match_ref[best_match_query[i][1]][1] == i:
-            pairs.append((i, best_match_query[i][1]))
-    for i in pairs:
-        subprocess.Popen(nucdiff_path)
+    gffs = []
+    for i in matches:
+        subprocess.Popen('python ~/apps/NucDiff/nucdiff.py ' + working_dir + '/' + os.path.splitext(os.path.basename(ref_gbk))[0]
+                         + '.' + i[1] + '.fa ' + working_dir + '/' + os.path.splitext(os.path.basename(query_gbk))[0] + '.' +
+                         i[0] + '.fa ' + working_dir + ' ' + os.path.splitext(os.path.basename(query_gbk))[0] + '.' + i[0] +
+                         'vs' + os.path.splitext(os.path.basename(ref_gbk))[0] + '.' + i[1], shell=True).wait()
+        gffs.append(os.path.join(working_dir, 'results', os.path.splitext(os.path.basename(query_gbk))[0] + '.' + i[0] +
+                         'vs' + os.path.splitext(os.path.basename(ref_gbk))[0] + '.' + i[1]))
+    return gffs
 
 
 
@@ -873,7 +759,6 @@ args = parser.parse_args()
 if not os.path.exists(args.working_dir):
     os.makedirs(args.working_dir)
 
-get_contig_matches(args.query_genbank, args.ref_genbank, args.working_dir)
-sys.exit()
-
-read_nucdiff(infile, args.query_genbank, args.ref_genbank, args.output, args.reference)
+matches = get_contig_matches(args.query_genbank, args.ref_genbank, args.working_dir)
+gffs = run_nucdiff(matches, args.working_dir, args.query_genbank, args.ref_genbank)
+read_nucdiff(gffs, args.query_genbank, args.ref_genbank, args.output, args.working_dir)
