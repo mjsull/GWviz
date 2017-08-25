@@ -430,7 +430,9 @@ def table_changes(gff_folder, output, working_dir):
     len_dict = {}
     none_genes = {}
     with open(working_dir + '/unknown_fasta.fa', 'w') as faa:
-        for gff_filename in os.listdir(gff_folder):
+        gff_filenames = os.listdir(gff_folder)
+        gff_filenames.sort()
+        for gff_filename in gff_filenames:
             with open(gff_folder + '/' + gff_filename) as gff:
                 extra_dict = {}
                 for line in gff:
@@ -511,6 +513,7 @@ def table_changes(gff_folder, output, working_dir):
                 G.add_edge(query, subject)
     other_genes = {}
     subgraphs = nx.connected_component_subgraphs(G)
+    gene_list = []
     for sg in subgraphs:
         gene_name = None
         for node in sg.nodes():
@@ -530,53 +533,84 @@ def table_changes(gff_folder, output, working_dir):
                         gff_muts[gene_name][gff_filename] = mut_type
                 else:
                     gff_muts[gene_name] = {gff_filename:mut_type}
-    with open(output, 'w') as o:
+    mut_freq = {}
+    with open(output + '.tsv', 'w') as o:
         gene_names = list(gff_muts)
+        o.write('gene')
+        for i in gff_filenames:
+            o.write('\t' + i)
+        o.write('\n')
         for i in gene_names:
-            o.write(i)
+            if i in other_genes:
+                alt_gene_list = [i] + other_genes[i]
+                alt_gene_list.sort()
+                o.write(alt_gene_list[0])
+            else:
+                o.write(i)
+                alt_gene_list = []
             count = 0
-            for j in os.listdir(gff_folder):
+            for j in gff_filenames:
                 if j in gff_muts[i]:
                     o.write('\t' + gff_muts[i][j])
-                    count += 1
+                    if gff_muts[i][j] in mut_freq:
+                        mut_freq[gff_muts[i][j]] += 1
+                    else:
+                        mut_freq[gff_muts[i][j]] = 1
+                    if j.startswith('c_'):
+                        count -= 1
+                    else:
+                        count += 1
                 else:
                     o.write('\tnone')
-            o.write('\t' + gene_desc[i][0] + '\t' + str(count))
+            gene_list.append((count, i))
+            o.write('\t' + gene_desc[i][0] + '\t' + str(count) + '\t' + gene_desc[i][1])
+            o.write('\t' + ','.join(alt_gene_list[1:]))
             o.write('\n')
-    sys.exit()
-    svg = scalableVectorGraphics(5000, 5000)
-    color_list = [(240,163,255),(0,117,220),(153,63,0),(76,0,92),(25,25,25),(0,92,49),(43,206,72),(255,204,153),
+    color_list = [(240,163,255),(0,117,220),(153,63,0),(76,0,92),(0,92,49),(43,206,72),(255,204,153),
                   (128,128,128),(148,255,181),(143,124,0),(157,204,0),(194,0,136),(0,51,128),(255,164,5),(255,168,187),
                   (66,102,0),(255,0,16),(94,241,242),(0,153,143),(224,255,102),(116,10,255),(153,0,0),(255,255,128),
-                  (255,255,0),(255,80,5), (0, 0, 0), (50, 50, 50)]
-    index = 0
-    color_dict = {'multiple changes':(50, 50, 50)}
+                  (255,255,0),(255,80,5)]
+    color_dict = {'no change':(255, 255, 255)}
     svg = scalableVectorGraphics(5000, 5000)
     x_margin = 100
     y_margin = 100
     square_width = 9
     total_width = 10
-    for num, i in enumerate(gbk_order):
+    mut_freq_list = []
+    for i in mut_freq:
+        mut_freq_list.append((mut_freq[i], i))
+    mut_freq_list.sort(reverse=True)
+    for num, i in enumerate(gff_filenames):
         svg.writeString(i, x_margin + num * total_width, y_margin - 5, 8, rotate=-1, justify='right')
-    for y_num, sg in enumerate(subgraphs):
-        square_dict = {}
-        gene_name = None
-        prokka_name = None
-        for node in sg.nodes():
-            contig, gene, prokka, mut_type = mut_list[int(node)]
-    print 'blastp -query ' + working_dir + '/unknown_fasta.fa -db ' + working_dir + '/tempdb -out ' + working_dir + '/blast.out -outfmt 6'
+    gene_list.sort(reverse=True)
+    new_gene_list = []
+    for i in gene_list:
+        if i[0] >= 2:
+            new_gene_list.append(i[1])
+    gene_list = new_gene_list
+    for num, i in enumerate(mut_freq_list):
+        if num < len(color_list):
+            color_dict[i[1]] = color_list[num]
+            svg.writeString(i[1], x_margin + 90, y_margin + (len(gene_list) + num) * total_width + 0.75 * square_width + 50, 10, justify='right')
+            svg.drawOutRect(x_margin + 100, y_margin + (len(gene_list) + num) * total_width + 50, square_width, square_width, fill=color_list[num], lt=0)
+        else:
+            color_dict[i[1]] = (0, 0, 0)
+    svg.writeString('other', x_margin + 90, y_margin + (len(gene_list) + len(color_list)) * total_width + 0.75 * square_width + 50, 10, justify='right')
+    svg.drawOutRect(x_margin + 100, y_margin + (len(gene_list) + len(color_list)) * total_width + 50, square_width, square_width, fill=(0, 0, 0), lt=0)
     for num, i in enumerate(gene_list):
-        svg.writeString(i, grid_start - 10, top_buffer + num * square_height + 0.75 * square_height, 10, justify='right')
-        svg.writeString(description_dict[i][0], grid_start + (len(out_dict) + len(go_list)) * square_width + 50, top_buffer + num * square_height + 0.75 * square_height, 10)
-        if not description_dict[i][1].startswith('PF'):
-            test_out.write(description_dict[i][1] + '\n')
-    svg.writeString('Phage genes:', grid_start - 10, top_buffer + (len(gene_list))* square_height + 0.75 * square_height, 10, justify='right')
-    svg.writeString('Hypothetical proteins:', grid_start - 10, top_buffer + (len(gene_list) + 1) * square_height + 0.75 * square_height, 10, justify='right')
+        svg.writeString(i, x_margin - 10, y_margin + num * total_width + 0.75 * square_width, 10, justify='right')
+        svg.writeString(gene_desc[i][0], x_margin + len(gff_filenames) * total_width + 20, y_margin + num * total_width + 0.75 * square_width, 10)
+        for num2, j in enumerate(gff_filenames):
+            if j in gff_muts[i]:
+                color = color_dict[gff_muts[i][j]]
+            else:
+                color = color_dict['no change']
+            svg.drawOutRect(x_margin + num2 * total_width, y_margin + num * total_width, square_width, square_width, fill=color, lt=0)
+    for i in color_dict:
+        if color_dict[i] != (50, 50, 50):
+            svg.writeString
 
-    for num1, i in enumerate(out_list):
-        ref_go[i] = set()
-        svg.writeString(i, grid_start + num1 * square_width, top_buffer-10, 10, justify='right', rotate=-1)
-
+    svg.writesvg(output + '.svg')
 
 
 

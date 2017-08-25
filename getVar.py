@@ -422,6 +422,7 @@ def get_genes(gbk):
                 strand = '+'
                 start, stop = map(int, startstop.split('..'))
                 gene = 'none'
+                uniprot = 'none'
             elif line.startswith('                     /locus_tag'):
                 locus_tag = line.split('"')[1]
             elif line.startswith('                     /gene='):
@@ -457,7 +458,7 @@ def get_genes(gbk):
                 seq += ''.join(line.split()[1:])
     return gene_dict, seqDict
 
-def read_nucdiff(gffs, query_genbank, ref_genbank, output, working_dir, ref=False, merge=False, get_indel=False, promoter_region=500):
+def read_nucdiff(gffs, query_genbank, ref_genbank, output, working_dir, ref=False, merge=False, get_indel=True, promoter_region=500):
     if ref:
         next = '_ref_'
     else:
@@ -519,7 +520,6 @@ def read_nucdiff(gffs, query_genbank, ref_genbank, output, working_dir, ref=Fals
                         new_extra = []
                         for i in extra_dict:
                             new_extra.append(i + '=' + extra_dict[i])
-                        print new_extra
                         new_extra.sort()
                         o.write('\t'.join([contig, program, so, str(query_start), str(query_stop), score, strand, phase, ';'.join(new_extra)]) + '\n')
         for gff in gffs:
@@ -639,9 +639,10 @@ def read_nucdiff(gffs, query_genbank, ref_genbank, output, working_dir, ref=Fals
             for j in gffs:
                 if os.path.basename(j).endswith('vs' + os.path.splitext(os.path.basename(ref_genbank))[0] + '.' + i):
                     plasmid = i
-
             if plasmid is None:
                 locus_list = []
+                gene_list = []
+                uniprot_list =[]
                 for j in ref_genes[i]:
                     start, stop, strand, gene, locus, seq, product, uniprot = j
                     locus_list.append(locus)
@@ -728,7 +729,6 @@ def get_contig_matches(query_gbk, ref_gbk, working_dir):
         match = query_matches[i][0]
         if match in ref_matches and ref_matches[match][0] == i:
             matches.append((i, match))
-            print i, match, list(query_lengths), list(ref_lengths)
     return matches
 
 
