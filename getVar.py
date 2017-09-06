@@ -490,11 +490,29 @@ def read_nucdiff(gffs, query_genbank, ref_genbank, output, working_dir, ref=Fals
                             if start <= query_start <= stop or start <= query_stop <= stop:
                                 gene_seq = query_seq[contig][start-1:stop]
                                 gene_seq_altered = query_seq[contig][start-1:query_start-1] + extra_dict['ref_bases'] + query_seq[contig][query_stop:stop]
+                                codon_start = query_start - (query_start-start)%3-1
+                                codon_seq = query_seq[contig][codon_start:codon_start+3]
+                                alt_codon = query_seq[contig][codon_start:query_start-1] + extra_dict['ref_bases'] + query_seq[contig][query_stop:codon_start+3]
                                 if strand == '-':
                                     gene_seq = reverse_compliment(gene_seq)
                                     gene_seq_altered = reverse_compliment(gene_seq_altered)
+                                    codon_seq = reverse_compliment(codon_seq)
+                                    alt_codon = reverse_compliment(alt_codon)
+                                print line.rstrip()
+                                print codon_seq
+                                print alt_codon
+                                print translate_dna(codon_seq)
+                                print translate_dna(alt_codon)
                                 aa_seq = translate_dna(gene_seq)
                                 aa_seq_altered = translate_dna(gene_seq_altered)
+                                for qq in range(len(aa_seq)):
+                                    if aa_seq[qq] != aa_seq_altered[qq]:
+                                        print aa_seq[qq]
+                                        print aa_seq_altered[qq]
+                                print aa_seq
+                                print aa_seq_altered
+                                if extra_dict['Name'] in ['deletion', 'insertion']:
+                                    pass
                                 if not '*' in aa_seq_altered:
                                     extra_dict['Name'] = 'stop_gain'
                                 elif '*' in aa_seq_altered[:-1]:
@@ -503,10 +521,12 @@ def read_nucdiff(gffs, query_genbank, ref_genbank, output, working_dir, ref=Fals
                                     extra_dict['Name'] = 'synonymous'
                                 else:
                                     extra_dict['Name'] = 'nonsynonymous'
+                                    extra_dict['aa_sub'] = str((query_start-start)/3+1) + '>' + translate_dna(codon_seq) + '>' + translate_dna(alt_codon)
                                 extra_dict['in_genes'] = locus
                                 extra_dict['in_genes_name'] = gene
                                 extra_dict['in_gene_uniprot'] = uniprot
                                 break
+
                             elif start - promoter_region <= query_start < start and strand == '+':
                                 extra_dict['Name'] = 'promoter'
                                 extra_dict['in_genes'] = locus
