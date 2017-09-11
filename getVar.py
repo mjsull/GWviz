@@ -752,12 +752,12 @@ def get_contig_matches(query_gbk, ref_gbk, working_dir):
     return matches
 
 
-def run_nucdiff(matches, working_dir, query_gbk, ref_gbk):
+def run_nucdiff(matches, working_dir, query_gbk, ref_gbk, nucdiff_path):
     gbk_to_fasta(query_gbk, working_dir + '/' + os.path.splitext(os.path.basename(query_gbk))[0], False)
     gbk_to_fasta(ref_gbk, working_dir + '/' + os.path.splitext(os.path.basename(ref_gbk))[0], False)
     gffs = []
     for i in matches:
-        subprocess.Popen('python ~/apps/NucDiff/nucdiff.py ' + working_dir + '/' + os.path.splitext(os.path.basename(ref_gbk))[0]
+        subprocess.Popen('python ' + nucdiff_path + ' ' + working_dir + '/' + os.path.splitext(os.path.basename(ref_gbk))[0]
                          + '.' + i[1] + '.fa ' + working_dir + '/' + os.path.splitext(os.path.basename(query_gbk))[0] + '.' +
                          i[0] + '.fa ' + working_dir + ' ' + os.path.splitext(os.path.basename(query_gbk))[0] + '.' + i[0] +
                          'vs' + os.path.splitext(os.path.basename(ref_gbk))[0] + '.' + i[1], shell=True).wait()
@@ -774,11 +774,12 @@ parser.add_argument("-rg", "--ref_genbank", help="Concatenated genbank of genome
 parser.add_argument("-f", '--folder', help="nucdiff folder")
 parser.add_argument("-w", '--working_dir', help="Add distance values")
 parser.add_argument("-r", '--reference', action="store_true", default=False, help="Look at changes to reference not query")
+parser.add_argument("-n", '--nucdiff', default='~/apps/NucDiff/nucdiff.py', help="path to nucdiff.py")
 args = parser.parse_args()
 
 if not os.path.exists(args.working_dir):
     os.makedirs(args.working_dir)
 
 matches = get_contig_matches(args.query_genbank, args.ref_genbank, args.working_dir)
-gffs = run_nucdiff(matches, args.working_dir, args.query_genbank, args.ref_genbank)
+gffs = run_nucdiff(matches, args.working_dir, args.query_genbank, args.ref_genbank, args.nucdiff)
 read_nucdiff(gffs, args.query_genbank, args.ref_genbank, args.output, args.working_dir)
