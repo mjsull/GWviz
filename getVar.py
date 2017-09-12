@@ -502,7 +502,7 @@ def read_nucdiff(gffs, query_genbank, ref_genbank, output, working_dir, ref=Fals
                                 aa_seq_altered = translate_dna(gene_seq_altered)
                                 if extra_dict['Name'] in ['deletion', 'insertion']:
                                     pass
-                                if not '*' in aa_seq_altered:
+                                elif not '*' in aa_seq_altered:
                                     extra_dict['Name'] = 'stop_gain'
                                 elif '*' in aa_seq_altered[:-1]:
                                     extra_dict['Name'] = 'stop_loss'
