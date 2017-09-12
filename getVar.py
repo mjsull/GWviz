@@ -500,10 +500,13 @@ def read_nucdiff(gffs, query_genbank, ref_genbank, output, working_dir, ref=Fals
                                     alt_codon = reverse_compliment(alt_codon)
                                 aa_seq = translate_dna(gene_seq)
                                 aa_seq_altered = translate_dna(gene_seq_altered)
-                                print extra_dict['Name']
-                                if extra_dict['Name'] in ['deletion', 'insertion']:
-                                    print 'ding'
-                                    # pass
+                                if extra_dict['Name'] in ['deletion', 'insertion', 'deletion_promoter', 'insertion_promoter']:
+                                    if 'deletion' in extra_dict['Name']:
+                                        extra_dict['Name'] = 'frameshift_del'
+                                    elif 'insertion' in extra_dict['Name']:
+                                        extra_dict['Name'] = 'frameshift_ins'
+                                    else:
+                                        print 'error'
                                 elif not '*' in aa_seq_altered:
                                     extra_dict['Name'] = 'stop_gain'
                                 elif '*' in aa_seq_altered[:-1]:
@@ -519,12 +522,18 @@ def read_nucdiff(gffs, query_genbank, ref_genbank, output, working_dir, ref=Fals
                                 break
 
                             elif start - promoter_region <= query_start < start and strand == '+':
-                                extra_dict['Name'] = 'promoter'
+                                if extra_dict['Name'] in ['deletion', 'insertion']:
+                                    extra_dict['Name'] = extra_dict['Name'] + '_promoter'
+                                else:
+                                    extra_dict['Name'] = 'promoter'
                                 extra_dict['in_genes'] = locus
                                 extra_dict['in_genes_name'] = gene
                                 extra_dict['in_gene_uniprot'] = uniprot
                             elif stop + promoter_region >= query_start > stop and strand == '-':
-                                extra_dict['Name'] = 'promoter'
+                                if extra_dict['Name'] in ['deletion', 'insertion']:
+                                    extra_dict['Name'] = extra_dict['Name'] + '_promoter'
+                                else:
+                                    extra_dict['Name'] = 'promoter'
                                 extra_dict['in_genes'] = locus
                                 extra_dict['in_genes_name'] = gene
                                 extra_dict['in_gene_uniprot'] = uniprot
