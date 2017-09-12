@@ -500,8 +500,10 @@ def read_nucdiff(gffs, query_genbank, ref_genbank, output, working_dir, ref=Fals
                                     alt_codon = reverse_compliment(alt_codon)
                                 aa_seq = translate_dna(gene_seq)
                                 aa_seq_altered = translate_dna(gene_seq_altered)
+                                print extra_dict['Name']
                                 if extra_dict['Name'] in ['deletion', 'insertion']:
-                                    pass
+                                    print 'ding'
+                                    # pass
                                 elif not '*' in aa_seq_altered:
                                     extra_dict['Name'] = 'stop_gain'
                                 elif '*' in aa_seq_altered[:-1]:
