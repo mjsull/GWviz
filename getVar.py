@@ -498,19 +498,8 @@ def read_nucdiff(gffs, query_genbank, ref_genbank, output, working_dir, ref=Fals
                                     gene_seq_altered = reverse_compliment(gene_seq_altered)
                                     codon_seq = reverse_compliment(codon_seq)
                                     alt_codon = reverse_compliment(alt_codon)
-                                print line.rstrip()
-                                print codon_seq
-                                print alt_codon
-                                print translate_dna(codon_seq)
-                                print translate_dna(alt_codon)
                                 aa_seq = translate_dna(gene_seq)
                                 aa_seq_altered = translate_dna(gene_seq_altered)
-                                for qq in range(len(aa_seq)):
-                                    if aa_seq[qq] != aa_seq_altered[qq]:
-                                        print aa_seq[qq]
-                                        print aa_seq_altered[qq]
-                                print aa_seq
-                                print aa_seq_altered
                                 if extra_dict['Name'] in ['deletion', 'insertion']:
                                     pass
                                 if not '*' in aa_seq_altered:
@@ -771,7 +760,6 @@ parser = argparse.ArgumentParser()
 parser.add_argument("-o", "--output", help="Will create an svg and gff of changes")
 parser.add_argument("-qg", "--query_genbank", help="Concatenated genbank of genome", metavar="genome.gbk")
 parser.add_argument("-rg", "--ref_genbank", help="Concatenated genbank of genome", metavar="genome.gbk")
-parser.add_argument("-f", '--folder', help="nucdiff folder")
 parser.add_argument("-w", '--working_dir', help="Add distance values")
 parser.add_argument("-r", '--reference', action="store_true", default=False, help="Look at changes to reference not query")
 parser.add_argument("-n", '--nucdiff', default='~/apps/NucDiff/nucdiff.py', help="path to nucdiff.py")
