@@ -738,11 +738,11 @@ def get_contig_matches(query_gbk, ref_gbk, working_dir):
         for j in matched_bases[i]:
             if i in query_matches and len(matched_bases[i][j]) > query_matches[i][1]:
                 query_matches[i] = (j, len(matched_bases[i][j]))
-            elif not i in query_matches and len(matched_bases[i][j]) > query_lengths[i] /2:
+            elif not i in query_matches and len(matched_bases[i][j]) > query_lengths[i] /5:
                 query_matches[i] = (j, len(matched_bases[i][j]))
             if j in ref_matches and len(matched_bases[i][j]) > ref_matches[j][1]:
                 ref_matches[j] = (i, len(matched_bases[i][j]))
-            elif not j in ref_matches and len(matched_bases[i][j]) > ref_lengths[j] /2:
+            elif not j in ref_matches and len(matched_bases[i][j]) > ref_lengths[j] / 5:
                 ref_matches[j] = (i, len(matched_bases[i][j]))
     matches = []
     for i in query_matches:
