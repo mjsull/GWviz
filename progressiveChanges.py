@@ -479,11 +479,34 @@ def table_changes(gff_folder, output, order_list):
         if 'u00000' in i[0] and len(change_dict[i]) > 1:
             draw_list.append((i + (gene_dict[i],) + (change_dict[i],)))
     draw_list.sort()
+    new_draw_list = []
+    last_gene_name = None
+    for i in draw_list:
+        ref_sequence, ref_start, ref_stop, mut_type, gene_name, pset = i
+        if last_gene_name is None:
+            last_gene_name = gene_name
+            last_ref_start = ref_start
+        elif ref_start <= last_ref_stop + 5000 and pset == last_pset:
+            if not gene_name in last_gene_name:
+                last_gene_name += ',' + gene_name
+            last_mut_type = 'multiple changes'
+        else:
+            new_draw_list.append((last_ref_seq, last_ref_start, last_ref_stop, last_mut_type, last_gene_name, last_pset))
+            last_gene_name = gene_name
+            last_ref_start = ref_start
+        last_ref_seq = ref_sequence
+        last_ref_stop = ref_stop
+        last_mut_type = mut_type
+        last_pset = pset
+    new_draw_list.append((last_ref_seq, last_ref_start, last_ref_stop, last_mut_type, last_gene_name, last_pset))
+    draw_list = new_draw_list
+
+
     color_list = [(240,163,255),(0,117,220),(153,63,0),(76,0,92),(0,92,49),(43,206,72),(255,204,153),
                   (128,128,128),(148,255,181),(143,124,0),(157,204,0),(194,0,136),(0,51,128),(255,164,5),(255,168,187),
                   (66,102,0),(255,0,16),(94,241,242),(0,153,143),(224,255,102),(116,10,255),(153,0,0),(255,255,128),
                   (255,255,0),(255,80,5)]
-    color_dict = {'no change':(255, 255, 255)}
+    color_dict = {}
     svg = scalableVectorGraphics(5000, 5000)
     x_margin = 100
     y_margin = 100
@@ -493,19 +516,26 @@ def table_changes(gff_folder, output, order_list):
     total_width = 10
     mut_freq_list = []
     y_height = len(draw_list) * total_width
-    svg.drawOutRect(x_margin, y_margin, 50, y_margin + y_height, lt=3)
-    for num, i in enumerate(gff_filenames):
+    svg.drawOutRect(x_margin, y_margin, 50, y_height, lt=3)
+    color_list_index = 0
+    for num, i in enumerate(query_gbk_list):
         svg.writeString(i, grid_start + num * total_width, y_margin - 5, 8, rotate=-1, justify='right')
     for num, i in enumerate(draw_list):
         ref_sequence, ref_start, ref_stop, mut_type, gene_name, pset = i
+        if mut_type in color_dict:
+            color = color_dict[mut_type]
+        else:
+            color = color_list[color_list_index]
+            color_list_index += 1
+            color_dict[mut_type] = color
         ref_seq_len = len(ref_seq[ref_sequence])
         genome_y = ref_start * 1.0 / ref_seq_len * y_height + y_margin
         figure_y = num * total_width + y_margin
-        svg.drawPath([x_margin, x_margin+50, text_start - 20, text_start], [genome_y, genome_y, figure_y + total_width/2, figure_y + total_width/2], th=2)
-        svg.writeString(gene_name, grid_start - 5, figure_y + total_width + 0.6, 8, justify='right')
+        svg.drawPath([x_margin, x_margin+50, text_start - 20, text_start], [genome_y, genome_y, figure_y + total_width/2, figure_y + total_width/2], th=2, cl=color)
+        svg.writeString(gene_name, grid_start - 5, figure_y + total_width * 0.6, 8, justify='right')
         for num2, j in enumerate(query_gbk_list):
             if j in pset:
-                svg.drawOutRect(grid_start + num2 * total_width, figure_y, square_width, square_width, fill=(0, 0, 0), lt=0)
+                svg.drawOutRect(grid_start + num2 * total_width, figure_y, square_width, square_width, fill=color, lt=0)
         svg.writeString(mut_type, grid_start + len(query_gbk_list) * total_width + 5, figure_y + total_width + 0.6, 8)
 
 

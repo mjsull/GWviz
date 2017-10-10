@@ -768,10 +768,10 @@ def run_nucdiff(matches, working_dir, query_gbk, ref_gbk, nucdiff_path):
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-o", "--output", help="Will create an svg and gff of changes")
+parser.add_argument("-o", "--output", help="Will create a gff of changes")
 parser.add_argument("-qg", "--query_genbank", help="Concatenated genbank of genome", metavar="genome.gbk")
 parser.add_argument("-rg", "--ref_genbank", help="Concatenated genbank of genome", metavar="genome.gbk")
-parser.add_argument("-w", '--working_dir', help="Add distance values")
+parser.add_argument("-w", '--working_dir', help="Folder to put intermediary files.")
 parser.add_argument("-r", '--reference', action="store_true", default=False, help="Look at changes to reference not query")
 parser.add_argument("-n", '--nucdiff', default='~/apps/NucDiff/nucdiff.py', help="path to nucdiff.py")
 args = parser.parse_args()
