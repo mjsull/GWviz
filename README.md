@@ -23,7 +23,9 @@ Takes a genbank query and reference. Concatenated genbanks (i.e. PROKKA output) 
 #### USAGE: getVar.py -qg <query.gbk> -rg <reference.gbk> -w <working_directory> -o <output.gff>
 
 Arguments:
-`  -h, --help            show this help message and exit
+
+```
+-h, --help            show this help message and exit
   -o OUTPUT, --output OUTPUT
                         Will create a gff of changes
   -qg genome.gbk, --query_genbank genome.gbk
@@ -35,8 +37,7 @@ Arguments:
   -r, --reference       Look at changes to reference not query
   -n NUCDIFF, --nucdiff NUCDIFF
                         path to nucdiff.py
-
-`
+```
 
 ### progressiveChanges.py
 Creates figure of cumulative changes to a genome over time. This is usefull for identifying lineages in an outbreak.
