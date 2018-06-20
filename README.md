@@ -13,7 +13,7 @@ Tool for identifying genes under selective pressure. Creates a figure/table of r
 
 
 
-## Running provarviz
+## Running GWviz
 
 ### getVar.py
 Runs nucdiff on two genbank files and then annotates a gff of changes with genes affected and mutation type i.e. synonymous/nonsynonymous.
